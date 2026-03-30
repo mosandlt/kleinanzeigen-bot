@@ -1688,12 +1688,8 @@ class KleinanzeigenBot(WebScrapingMixin):  # noqa: PLR0904
                 _handle_incomplete_fetch("Invalid 'pageNum' in paging info: %s, stopping pagination", paging.get("pageNum"))
                 break
 
-            if total_pages is None:
-                LOG.debug("No pagination info found, assuming single page")
-                break
-
-            # Stop if reached last page
-            if current_page_num >= total_pages:
+            # Stop if reached last page (when 'last' field is present)
+            if total_pages is not None and current_page_num >= total_pages:
                 LOG.info("Reached last page %s of %s, stopping pagination", current_page_num, total_pages)
                 break
 
@@ -1707,8 +1703,13 @@ class KleinanzeigenBot(WebScrapingMixin):  # noqa: PLR0904
             # Use API's next field for navigation (more robust than our counter)
             next_page = misc.coerce_page_number(paging.get("next"))
             if next_page is None:
-                LOG.warning("Invalid 'next' page value in paging info: %s, stopping pagination", paging.get("next"))
-                _handle_incomplete_fetch("Invalid 'next' page value in paging info: %s, stopping pagination", paging.get("next"))
+                if total_pages is not None:
+                    # 'last' indicates more pages but 'next' is missing — unexpected
+                    LOG.warning("Invalid 'next' page value in paging info: %s, stopping pagination", paging.get("next"))
+                    _handle_incomplete_fetch("Invalid 'next' page value in paging info: %s, stopping pagination", paging.get("next"))
+                else:
+                    # No 'last' and no 'next' — we're on the last page
+                    LOG.debug("No 'next' in paging on page %s, assuming last page", page)
                 break
             page = next_page
 
@@ -2063,7 +2064,7 @@ class KleinanzeigenBot(WebScrapingMixin):  # noqa: PLR0904
         # set description
         #############################
         description = self.__get_description(ad_cfg, with_affixes = True)
-        await self.web_execute("document.querySelector('#pstad-descrptn').value = `" + description.replace("`", "'") + "`")
+        await self.web_execute("document.querySelector('#ad-description,#pstad-descrptn').value = `" + description.replace("`", "'") + "`")
 
         await self.__set_contact_fields(ad_cfg.contact)
 
@@ -2319,7 +2320,7 @@ class KleinanzeigenBot(WebScrapingMixin):  # noqa: PLR0904
 
     async def __set_category(self, category:str | None, ad_file:str) -> None:
         # click on something to trigger automatic category detection
-        await self.web_click(By.ID, "pstad-descrptn")
+        await self.web_click(By.CSS_SELECTOR, "#ad-description, #pstad-descrptn")
 
         is_category_auto_selected = False
         try:

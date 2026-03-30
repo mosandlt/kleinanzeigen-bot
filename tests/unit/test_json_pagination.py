@@ -297,6 +297,27 @@ class TestJSONPagination:
             await bot._fetch_published_ads(strict = True)
 
     @pytest.mark.asyncio
+    async def test_fetch_published_ads_multi_page_without_last_field(self, bot:KleinanzeigenBot) -> None:
+        """Test pagination using only 'next' when 'last' field is absent (issue #917)."""
+        page1_data = {"ads": [{"id": 1, "state": "active"}, {"id": 2, "state": "active"}], "paging": {"pageNum": 1, "pageSize": 25, "numFound": 3, "next": 2}}
+        page2_data = {"ads": [{"id": 3, "state": "active"}], "paging": {"pageNum": 2, "pageSize": 25, "numFound": 3}}
+
+        with patch.object(bot, "web_request", new_callable = AsyncMock) as mock_request:
+            mock_request.side_effect = [
+                {"content": json.dumps(page1_data)},
+                {"content": json.dumps(page2_data)},
+            ]
+
+            result = await bot._fetch_published_ads()
+
+            if len(result) != 3:
+                pytest.fail(f"Expected 3 ads but got {len(result)}")
+            if [ad["id"] for ad in result] != [1, 2, 3]:
+                pytest.fail(f"Expected ids [1, 2, 3] but got {[ad['id'] for ad in result]}")
+            if mock_request.call_count != 2:
+                pytest.fail(f"Expected 2 web_request calls but got {mock_request.call_count}")
+
+    @pytest.mark.asyncio
     async def test_fetch_published_ads_handles_non_string_content_type(self, bot:KleinanzeigenBot, caplog:pytest.LogCaptureFixture) -> None:
         """Unexpected non-string content types should stop pagination with warning."""
         with patch.object(bot, "web_request", new_callable = AsyncMock) as mock_request:
