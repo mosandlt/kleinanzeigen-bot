@@ -2032,11 +2032,11 @@ class KleinanzeigenBot(WebScrapingMixin):  # noqa: PLR0904
                 if mode == AdUpdateStrategy.MODIFY:
                     # Clear the price field first to prevent concatenation of old and new values
                     # This is needed because some input fields don't clear properly with just clear_input()
-                    price_field = await self.web_find(By.CSS_SELECTOR, "input#post-ad-frontend-price, input#micro-frontend-price, input#pstad-price")
+                    price_field = await self.web_find(By.CSS_SELECTOR, "input#ad-price-amount, input#post-ad-frontend-price, input#micro-frontend-price, input#pstad-price")
                     await price_field.clear_input()
                     await price_field.send_keys("")  # Ensure field is completely empty
                     await self.web_sleep(500)  # Brief pause to ensure clearing is complete
-                await self.web_input(By.CSS_SELECTOR, "input#post-ad-frontend-price, input#micro-frontend-price, input#pstad-price", str(ad_cfg.price))
+                await self.web_input(By.CSS_SELECTOR, "input#ad-price-amount, input#post-ad-frontend-price, input#micro-frontend-price, input#pstad-price", str(ad_cfg.price))
 
         #############################
         # set sell_directly
@@ -2104,11 +2104,14 @@ class KleinanzeigenBot(WebScrapingMixin):  # noqa: PLR0904
         #############################
         try:
             try:
-                await self.web_click(By.ID, "pstad-submit")
+                await self.web_click(By.CSS_SELECTOR, "#pstad-submit, button[type='submit']")
             except TimeoutError:
                 # https://github.com/Second-Hand-Friends/kleinanzeigen-bot/issues/40
-                await self.web_click(By.XPATH, "//fieldset[@id='postad-publish']//*[contains(., 'Anzeige aufgeben')]")
-                await self.web_click(By.ID, "imprint-guidance-submit")
+                await self.web_click(By.XPATH, "//button[contains(., 'Anzeige aufgeben')] | //fieldset[@id='postad-publish']//*[contains(., 'Anzeige aufgeben')]")
+                try:
+                    await self.web_click(By.ID, "imprint-guidance-submit")
+                except TimeoutError:
+                    pass
 
             # check for no image question
             try:
@@ -2182,7 +2185,7 @@ class KleinanzeigenBot(WebScrapingMixin):  # noqa: PLR0904
         if contact.zipcode:
             zipcode_set = True
             try:
-                zip_field = await self.web_find(By.ID, "pstad-zip")
+                zip_field = await self.web_find(By.CSS_SELECTOR, "#ad-zip-code, #pstad-zip")
                 if zip_field is None:
                     raise TimeoutError("ZIP input not found")
                 await zip_field.clear_input()
@@ -2190,41 +2193,45 @@ class KleinanzeigenBot(WebScrapingMixin):  # noqa: PLR0904
                 # fall back to standard input below
                 pass
             try:
-                await self.web_input(By.ID, "pstad-zip", contact.zipcode)
+                await self.web_input(By.CSS_SELECTOR, "#ad-zip-code, #pstad-zip", contact.zipcode)
             except TimeoutError:
                 LOG.warning("Could not set contact zipcode: %s", contact.zipcode)
                 zipcode_set = False
             # Set city if location is specified
             if contact.location and zipcode_set:
                 try:
-                    options = await self.web_find_all(By.CSS_SELECTOR, "#pstad-citychsr option")
-
-                    found = False
-                    for option in options:
-                        opt_text = option.text.strip()
-                        target = contact.location.strip()
-                        if opt_text == target:
-                            await self.web_select(By.ID, "pstad-citychsr", option.attrs.value)
-                            found = True
-                            break
-                        if " - " in opt_text and opt_text.split(" - ", 1)[1] == target:
-                            await self.web_select(By.ID, "pstad-citychsr", option.attrs.value)
-                            found = True
-                            break
-                    if not found:
-                        LOG.warning("No city dropdown option matched location: %s", contact.location)
+                    # New form: plain text input
+                    await self.web_input(By.ID, "ad-city", contact.location)
                 except TimeoutError:
-                    LOG.warning("Could not set contact location: %s", contact.location)
+                    try:
+                        # Old form: select dropdown with options
+                        options = await self.web_find_all(By.CSS_SELECTOR, "#pstad-citychsr option")
+                        found = False
+                        for option in options:
+                            opt_text = option.text.strip()
+                            target = contact.location.strip()
+                            if opt_text == target:
+                                await self.web_select(By.ID, "pstad-citychsr", option.attrs.value)
+                                found = True
+                                break
+                            if " - " in opt_text and opt_text.split(" - ", 1)[1] == target:
+                                await self.web_select(By.ID, "pstad-citychsr", option.attrs.value)
+                                found = True
+                                break
+                        if not found:
+                            LOG.warning("No city dropdown option matched location: %s", contact.location)
+                    except TimeoutError:
+                        LOG.warning("Could not set contact location: %s", contact.location)
 
         #############################
         # set contact street
         #############################
         if contact.street:
             try:
-                if await self.web_check(By.ID, "pstad-street", Is.DISABLED):
-                    await self.web_click(By.ID, "addressVisibility")
+                if await self.web_check(By.CSS_SELECTOR, "#ad-street, #pstad-street", Is.DISABLED):
+                    await self.web_click(By.CSS_SELECTOR, "#ad-address-visibility, #addressVisibility")
                     await self.web_sleep()
-                await self.web_input(By.ID, "pstad-street", contact.street)
+                await self.web_input(By.CSS_SELECTOR, "#ad-street, #pstad-street", contact.street)
             except TimeoutError:
                 LOG.warning("Could not set contact street.")
 
@@ -2233,8 +2240,8 @@ class KleinanzeigenBot(WebScrapingMixin):  # noqa: PLR0904
         #############################
         if contact.name:
             try:
-                if not await self.web_check(By.ID, "postad-contactname", Is.READONLY):
-                    await self.web_input(By.ID, "postad-contactname", contact.name)
+                if not await self.web_check(By.CSS_SELECTOR, "#ad-name, #postad-contactname", Is.READONLY):
+                    await self.web_input(By.CSS_SELECTOR, "#ad-name, #postad-contactname", contact.name)
             except TimeoutError:
                 LOG.warning("Could not set contact name.")
 
@@ -2332,7 +2339,7 @@ class KleinanzeigenBot(WebScrapingMixin):  # noqa: PLR0904
 
         if category:
             await self.web_sleep()  # workaround for https://github.com/Second-Hand-Friends/kleinanzeigen-bot/issues/39
-            await self.web_click(By.ID, "pstad-lnk-chngeCtgry")
+            await self.web_click(By.XPATH, "//*[@id='pstad-lnk-chngeCtgry'] | //a[contains(.,'Wähle deine Kategorie')] | //button[contains(.,'Wähle deine Kategorie')]")
             await self.web_find(By.ID, "postad-step1-sbmt")
 
             category_url = f"{self.root_url}/p-kategorie-aendern.html#?path={category}"
